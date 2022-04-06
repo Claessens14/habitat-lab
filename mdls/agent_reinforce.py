@@ -16,7 +16,7 @@ April 5th, 2022
 
 LEARNING_RATE = 0.0001
 TRAINING_EPISODES = 1000
-
+GAMMA = 0.99
 
 def make_video_cv2(observations, prefix=""):
     output_path = "./video_dir/"
@@ -67,11 +67,10 @@ def model_runner():
         action_space = ["MOVE_FORWARD", "TURN_LEFT", "TURN_RIGHT"]
         model = ReinforceModel(4, len(action_space))
         optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-        all_rewards = [] # the inverse of the distance to goal
-        best_rolling = []
-
+        running_reward = 0
         for episode in range(TRAINING_EPISODES):
-            observations = env.reset()
+            #hereb
+            observations, log_prob_action_lst, episode_rewards = env.reset(), [], []
             step_count = 0
             past_location = None
             past_distance_to_goal = env._current_episode.info['geodesic_distance']
@@ -88,32 +87,15 @@ def model_runner():
                 # env._current_episode.goals[0].position
                 # env._current_episode.start_rotation
          
-                # observations['pointgoal_with_gps_compass']
-                #if step_count == 287:
-                #    import ipdb; ipdb.set_trace()
-               # if env.episode_over or env.get_metrics()['distance_to_goal'] < .2: # at the goal
-               #     action = {'action': 'STOP', 'action_args': None} 
-               #     observations = env.step(action)
-               # elif step_count == 0:
-               #     action = {'action': 'MOVE_FORWARD', 'action_args': None} 
-               #     observations = env.step(action)
-               # elif env.get_metrics()['distance_to_goal'] < past_distance_to_goal:   # diff is smaller
-               #     # repeat
-               #     past_distance_to_goal = env.get_metrics()['distance_to_goal']
-               #     action = {'action': 'MOVE_FORWARD', 'action_args': None} 
-               #     observations = env.step(action)
-               # else:
-               #     action = {'action': 'TURN_RIGHT', 'action_args': None} 
-               #     observations = env.step(action)
-            # (distance_to_goal, observations[pointgoal_with_gps_compas], difference_last_location)     
-         #       import ipdb; ipdb.set_trace()
                 action, log_prob_action = model(torch.tensor([env.get_metrics()['distance_to_goal'],
                                                                 observations['pointgoal_with_gps_compass'][0],
                                                                 observations['pointgoal_with_gps_compass'][1],
                                                                 past_distance_to_goal]))
+                log_prob_action_lst.append(log_prob_action)
                 past_distance_to_goal = env.get_metrics()['distance_to_goal']
                 observations = env.step(action_space[action.item()])
-                
+                episode_rewards.append(env.get_metrics()['distance_to_goal'])
+        
                 if episode % 10 == 0:  # draw every 10 episodes
                     info = env.get_metrics()
                     use_ob = observations_to_image(observations, info)
@@ -121,14 +103,33 @@ def model_runner():
                     draw_ob = use_ob[:]
                     draw_ob = np.transpose(draw_ob, (1, 0, 2))
                     all_obs.append(draw_ob)
-                        #all_obs = np.append(all_obs, draw_ob)
-                    if step_count == 250: 
+                    if env.episode_over: 
                         np_all_obs = np.array(all_obs)
                         np_all_obs = np.transpose(np_all_obs, (0, 2, 1, 3))
                         make_video_cv2(np_all_obs, "interactive_play-" + str(episode))
-          
                 step_count += 1
-        print(env.episode_over)
+            running_reward = 0.05*sum(episode_rewards) + 0.95*running_reward
+            print(f"running_reward: {running_reward}")
+            
+            discounted_rewards = []
+            for t in range(len(episode_rewards)):
+                Gt = 0
+                power = 0
+                for future_reward in episode_rewards[t:]:
+                    Gt = Gt + GAMMA**power * future_reward
+                    power += 1
+                discounted_rewards.append(Gt)
+            discounted_rewards = torch.tensor(discounted_rewards)
+            #Normalize
+            discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / discounted_rewards.std()
+            policy_loss_lst = []
+            for log_prob, Gt in zip(log_prob_action_lst, discounted_rewards):
+                policy_loss_lst.append(-log_prob * Gt)
+            optimizer.zero_grad()
+            policy_loss_sum = torch.stack(policy_loss_lst).sum()
+            policy_loss_sum.backward()
+            optimizer.step()
+        
         print("==================================")
 
 if __name__ == "__main__":
