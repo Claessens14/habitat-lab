@@ -15,7 +15,7 @@ April 5th, 2022
 '''
 
 LEARNING_RATE = 0.0001
-TRAINING_EPISODES = 1000
+TRAINING_EPISODES = 10000
 GAMMA = 0.99
 
 def make_video_cv2(observations, prefix=""):
@@ -76,11 +76,11 @@ def model_runner():
             past_distance_to_goal = env._current_episode.info['geodesic_distance']
             all_obs = []
             while not env.episode_over:
-                print(step_count)
-                print(past_distance_to_goal)
-                print(env.get_metrics()['distance_to_goal'])
+                #print(step_count)
+                # print(past_distance_to_goal)
+                # print(env.get_metrics()['distance_to_goal'])
          
-                print("---")
+                #print("---")
                 # print(env.episode_over)
                 # env._current_episode.start_position
                 # env._current_episode.info['geodesic_distance']
@@ -94,9 +94,10 @@ def model_runner():
                 log_prob_action_lst.append(log_prob_action)
                 past_distance_to_goal = env.get_metrics()['distance_to_goal']
                 observations = env.step(action_space[action.item()])
-                episode_rewards.append(env.get_metrics()['distance_to_goal'])
+                r = (env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / env._current_episode.info['geodesic_distance']
+                episode_rewards.append(r)
         
-                if episode % 10 == 0:  # draw every 10 episodes
+                if episode % 1000 == 0:  # draw every 10 episodes
                     info = env.get_metrics()
                     use_ob = observations_to_image(observations, info)
                     use_ob = overlay_frame(use_ob, info)
@@ -109,7 +110,7 @@ def model_runner():
                         make_video_cv2(np_all_obs, "interactive_play-" + str(episode))
                 step_count += 1
             running_reward = 0.05*sum(episode_rewards) + 0.95*running_reward
-            print(f"running_reward: {running_reward}")
+            print(f"{episode} -> running_reward: {running_reward}")
             
             discounted_rewards = []
             for t in range(len(episode_rewards)):
@@ -120,8 +121,9 @@ def model_runner():
                     power += 1
                 discounted_rewards.append(Gt)
             discounted_rewards = torch.tensor(discounted_rewards)
-            #Normalize
+            # Normalize
             discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / discounted_rewards.std()
+            # REINFORCE
             policy_loss_lst = []
             for log_prob, Gt in zip(log_prob_action_lst, discounted_rewards):
                 policy_loss_lst.append(-log_prob * Gt)
