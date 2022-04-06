@@ -114,21 +114,18 @@ def model_runner():
                 past_distance_to_goal = env.get_metrics()['distance_to_goal']
                 observations = env.step(action_space[action.item()])
                 
-                if episode % 10:  # draw every 10 episodes
+                if episode % 10 == 0:  # draw every 10 episodes
                     info = env.get_metrics()
                     use_ob = observations_to_image(observations, info)
                     use_ob = overlay_frame(use_ob, info)
                     draw_ob = use_ob[:]
-                    
-                    if  True:
-                        draw_ob = np.transpose(draw_ob, (1, 0, 2))
-                        # do we really need printing??? 
-                        all_obs.append(draw_ob)
+                    draw_ob = np.transpose(draw_ob, (1, 0, 2))
+                    all_obs.append(draw_ob)
                         #all_obs = np.append(all_obs, draw_ob)
                     if step_count == 250: 
-                        all_obs = np.array(all_obs)
-                        all_obs = np.transpose(all_obs, (0, 2, 1, 3))
-                        make_video_cv2(all_obs, "interactive_play")
+                        np_all_obs = np.array(all_obs)
+                        np_all_obs = np.transpose(np_all_obs, (0, 2, 1, 3))
+                        make_video_cv2(np_all_obs, "interactive_play-" + str(episode))
           
                 step_count += 1
         print(env.episode_over)
