@@ -18,6 +18,7 @@ April 5th, 2022
 LEARNING_RATE = 0.0001
 TRAINING_EPISODES = 10000
 GAMMA = 0.99
+SAVE_INTERVAL = 500
 
 def make_video_cv2(observations, prefix=""):
     output_path = "./video_dir/"
@@ -70,6 +71,7 @@ def model_runner():
         model = ReinforceModel(4, len(action_space))
         optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
         running_reward = 0
+        epoch_rewards_lst = []
         for episode in range(TRAINING_EPISODES):
             #hereb
             observations, log_prob_action_lst, episode_rewards = env.reset(), [], []
@@ -96,10 +98,10 @@ def model_runner():
                 log_prob_action_lst.append(log_prob_action)
                 past_distance_to_goal = env.get_metrics()['distance_to_goal']
                 observations = env.step(action_space[action.item()])
-                r = abs(2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / env._current_episode.info['geodesic_distance']
+                r = round(abs(2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / (2*env._current_episode.info['geodesic_distance']), 3)
                 episode_rewards.append(r)
         
-                if episode % 500 == 0:  # draw every 10 episodes
+                if episode % SAVE_INTERVAL == 0:  # draw every 10 episodes
                     info = env.get_metrics()
                     use_ob = observations_to_image(observations, info)
                     use_ob = overlay_frame(use_ob, info)
@@ -113,11 +115,14 @@ def model_runner():
                         time_str = str(ct.strftime("%c").replace(" ", "-"))
                         fname = os.path.basename(__file__) + "-" + str(episode) + "-"  + time_str
                         make_video_cv2(np_all_obs, fname)
+                        torch.save(epoch_rewards_lst, "./output/reward_data/" + "r=" + str(r) + "_"+ fname + ".pt")
+                        fname = "ckpt_r=" + str(r) + "_" + fname + ".pt"
+                        torch.save(model.state_dict(), "./ckpt/" + fname)
                 step_count += 1
             running_reward = 0.05*sum(episode_rewards) + 0.95*running_reward
             #print(f"{episode} -> running_reward: {running_reward}")
-            print(f"{episode} -> reward: {episode_rewards[-1]}")
-            
+            print(f"{episode} -> reward: {episode_rewards[-1]} %")
+            epoch_rewards_lst.append(episode_rewards[-1])
             discounted_rewards = []
             for t in range(len(episode_rewards)):
                 Gt = 0
