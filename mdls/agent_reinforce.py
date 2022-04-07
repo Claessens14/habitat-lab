@@ -1,6 +1,7 @@
 import habitat
 import habitat_sim
 
+import datetime
 import torch
 import os
 import cv2
@@ -44,11 +45,12 @@ class ReinforceModel(torch.nn.Module):
     def forward(self, state_values): 
         '''
         state_values: torch tensor (distance_to_goal, observations[pointgoal_with_gps_compas], difference_last_location) 
-        returns: 0-3 for indexing [FORWARD, RIGHT, STOP, __]
+        returns: 0-3 for indexing [FORWARD, RIGHT, LEFT ]
         '''
         h = torch.nn.functional.relu(self.layer1(state_values))
         action_probs = torch.nn.functional.softmax(self.layer2(h))
         m = torch.distributions.Categorical(action_probs)
+        #import ipdb; ipdb.set_trace()
         action = m.sample()
         return action, m.log_prob(action)
 
@@ -94,10 +96,10 @@ def model_runner():
                 log_prob_action_lst.append(log_prob_action)
                 past_distance_to_goal = env.get_metrics()['distance_to_goal']
                 observations = env.step(action_space[action.item()])
-                r = (env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / env._current_episode.info['geodesic_distance']
+                r = abs(2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / env._current_episode.info['geodesic_distance']
                 episode_rewards.append(r)
         
-                if episode % 1000 == 0:  # draw every 10 episodes
+                if episode % 500 == 0:  # draw every 10 episodes
                     info = env.get_metrics()
                     use_ob = observations_to_image(observations, info)
                     use_ob = overlay_frame(use_ob, info)
@@ -107,10 +109,14 @@ def model_runner():
                     if env.episode_over: 
                         np_all_obs = np.array(all_obs)
                         np_all_obs = np.transpose(np_all_obs, (0, 2, 1, 3))
-                        make_video_cv2(np_all_obs, "interactive_play-" + str(episode))
+                        ct = datetime.datetime.now()
+                        time_str = str(ct.strftime("%c").replace(" ", "-"))
+                        fname = os.path.basename(__file__) + "-" + str(episode) + "-"  + time_str
+                        make_video_cv2(np_all_obs, fname)
                 step_count += 1
             running_reward = 0.05*sum(episode_rewards) + 0.95*running_reward
-            print(f"{episode} -> running_reward: {running_reward}")
+            #print(f"{episode} -> running_reward: {running_reward}")
+            print(f"{episode} -> reward: {episode_rewards[-1]}")
             
             discounted_rewards = []
             for t in range(len(episode_rewards)):
