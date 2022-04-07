@@ -98,7 +98,8 @@ def model_runner():
                 log_prob_action_lst.append(log_prob_action)
                 past_distance_to_goal = env.get_metrics()['distance_to_goal']
                 observations = env.step(action_space[action.item()])
-                r = round(abs(2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / (2*env._current_episode.info['geodesic_distance']), 3)
+                r = round((2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / (2*env._current_episode.info['geodesic_distance']), 3)
+                if r < 0: r = 0
                 episode_rewards.append(r)
         
                 if episode % SAVE_INTERVAL == 0:  # draw every 10 episodes
