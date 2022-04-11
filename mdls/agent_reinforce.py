@@ -10,15 +10,14 @@ from habitat.utils.visualizations.utils import observations_to_image
 from habitat_baselines.utils.render_wrapper import overlay_frame
 
 '''
-Agent that navigate based on a reinforcemnent learlning policy
-April 5th, 2022
-
+Policy Based Navigation with REINFORCE optimization
 '''
 
 LEARNING_RATE = 0.0001
 TRAINING_EPISODES = 10000
 GAMMA = 0.99
 SAVE_INTERVAL = 500
+DEVICE = 'cuda'
 
 def make_video_cv2(observations, prefix=""):
     output_path = "./video_dir/"
@@ -40,15 +39,15 @@ class ReinforceModel(torch.nn.Module):
         self.num_input = num_input
         self.num_action = num_action
         
-        self.layer1 = torch.nn.Linear(num_input, 32)
-        self.layer2 = torch.nn.Linear(32, num_action)
+        self.layer1 = torch.nn.Linear(num_input, 32).to(device=DEVICE)
+        self.layer2 = torch.nn.Linear(32, num_action).to(device=DEVICE)
     
     def forward(self, state_values): 
         '''
         state_values: torch tensor (distance_to_goal, observations[pointgoal_with_gps_compas], difference_last_location) 
         returns: 0-3 for indexing [FORWARD, RIGHT, LEFT ]
         '''
-        h = torch.nn.functional.relu(self.layer1(state_values))
+        h = torch.nn.functional.relu(self.layer1(state_values)).to(device=DEVICE)
         action_probs = torch.nn.functional.softmax(self.layer2(h))
         m = torch.distributions.Categorical(action_probs)
         #import ipdb; ipdb.set_trace()
@@ -94,7 +93,7 @@ def model_runner():
                 action, log_prob_action = model(torch.tensor([env.get_metrics()['distance_to_goal'],
                                                                 observations['pointgoal_with_gps_compass'][0],
                                                                 observations['pointgoal_with_gps_compass'][1],
-                                                                past_distance_to_goal]))
+                                                                past_distance_to_goal], device=DEVICE))
                 log_prob_action_lst.append(log_prob_action)
                 past_distance_to_goal = env.get_metrics()['distance_to_goal']
                 observations = env.step(action_space[action.item()])

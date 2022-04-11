@@ -8,6 +8,10 @@ from habitat.utils.visualizations.utils import observations_to_image
 from habitat_baselines.utils.render_wrapper import overlay_frame
 from habitat.utils.visualizations.utils import images_to_video
 
+'''
+Heuristic-Aided Navigation
+'''
+
 
 def make_video_cv2(observations, prefix=""):
     output_path = "./video_dir/"
