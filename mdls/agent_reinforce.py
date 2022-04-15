@@ -1,6 +1,7 @@
 import habitat
 import habitat_sim
 
+import aim
 import datetime
 import torch
 import os
@@ -34,13 +35,13 @@ def make_video_cv2(observations, prefix=""):
     print("Saved to", vid_name)
 
 class ReinforceModel(torch.nn.Module):
-    def __init__(self, num_input, num_action):
+    def __init__(self, num_input, policy_width, num_action):
         super(ReinforceModel, self).__init__()
         self.num_input = num_input
         self.num_action = num_action
         
-        self.layer1 = torch.nn.Linear(num_input, 32).to(device=DEVICE)
-        self.layer2 = torch.nn.Linear(32, num_action).to(device=DEVICE)
+        self.layer1 = torch.nn.Linear(num_input, policy_width).to(device=DEVICE)
+        self.layer2 = torch.nn.Linear(policy_width, num_action).to(device=DEVICE)
     
     def forward(self, state_values): 
         '''
@@ -50,28 +51,43 @@ class ReinforceModel(torch.nn.Module):
         h = torch.nn.functional.relu(self.layer1(state_values)).to(device=DEVICE)
         action_probs = torch.nn.functional.softmax(self.layer2(h))
         m = torch.distributions.Categorical(action_probs)
-        #import ipdb; ipdb.set_trace()
         action = m.sample()
         return action, m.log_prob(action)
 
 
-def model_runner():    
+def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, policy_depth=2, policy_width=16):    
     with habitat.Env(
         config=habitat.get_config(
             "configs/tasks/pointnav.yaml"
          )
         ) as env:
-        
 
+        ct = datetime.datetime.now()
+        time_str = str(ct.strftime("%c").replace(" ", "-"))
+        runtime_name = f"learning_rate-{learning_rate}___training_episodes-{training_episodes}___policy_width-{policy_width}___policy_depth-{policy_depth}___timestamp-{time_str}"
+        runtime_name = runtime_name.replace(".", "_").replace(":", "_")
+        runtime_dir_name = "./logs/" + runtime_name
+        os.mkdir(runtime_dir_name)
+        hparams = {
+            "learning_rate": learning_rate,
+            "training_episodes":training_episodes,
+            "policy_width": policy_width,
+            "policy_depth": policy_depth
+            #"batch_size": 32,
+        }
+        aim_sess = aim.Session(experiment=runtime_name)
+        aim_sess.set_params(hparams, name="Hyper_Parameters")
         print("==================================")
         print("envronment setup complete")
+       
+
         
         action_space = ["MOVE_FORWARD", "TURN_LEFT", "TURN_RIGHT"]
-        model = ReinforceModel(4, len(action_space))
-        optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+        model = ReinforceModel(4, policy_width, len(action_space))
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         running_reward = 0
         epoch_rewards_lst = []
-        for episode in range(TRAINING_EPISODES):
+        for episode in range(training_episodes):
             #hereb
             observations, log_prob_action_lst, episode_rewards = env.reset(), [], []
             step_count = 0
@@ -100,8 +116,9 @@ def model_runner():
                 r = round((2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / (2*env._current_episode.info['geodesic_distance']), 3)
                 if r < 0: r = 0
                 episode_rewards.append(r)
-        
-                if episode % SAVE_INTERVAL == 0:  # draw every 10 episodes
+                if env.episode_over:
+                    aim.track(r, name="end_rewards") 
+                if episode % save_interval == 0:  # draw every 10 episodes
                     info = env.get_metrics()
                     use_ob = observations_to_image(observations, info)
                     use_ob = overlay_frame(use_ob, info)
@@ -113,7 +130,7 @@ def model_runner():
                         np_all_obs = np.transpose(np_all_obs, (0, 2, 1, 3))
                         ct = datetime.datetime.now()
                         time_str = str(ct.strftime("%c").replace(" ", "-"))
-                        fname = os.path.basename(__file__) + "-" + str(episode) + "-"  + time_str
+                        fname = os.path.basename(__file__) + "-" + runtime_name + "-" + str(episode) + "-"  + time_str
                         make_video_cv2(np_all_obs, fname)
                         torch.save(epoch_rewards_lst, "./output/reward_data/" + "r=" + str(r) + "_"+ fname + ".pt")
                         fname = "ckpt_r=" + str(r) + "_" + fname + ".pt"
