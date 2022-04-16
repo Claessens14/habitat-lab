@@ -116,6 +116,11 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
                 r = round((2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / (2*env._current_episode.info['geodesic_distance']), 3)
                 if r < 0: r = 0
                 episode_rewards.append(r)
+                import ipdb; ipdb.set_trace()
+                
+                if env.get_metrics()['distance_to_goal'] < 1:
+                    env.step("STOP")
+                
                 if env.episode_over:
                     aim.track(r, name="end_rewards") 
                 if episode % save_interval == 0:  # draw every 10 episodes
