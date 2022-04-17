@@ -64,7 +64,7 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
 
         ct = datetime.datetime.now()
         time_str = str(ct.strftime("%c").replace(" ", "-"))
-        runtime_name = f"learning_rate-{learning_rate}___training_episodes-{training_episodes}___policy_width-{policy_width}___policy_depth-{policy_depth}___timestamp-{time_str}"
+        runtime_name = f"new-input___learning_rate-{learning_rate}___training_episodes-{training_episodes}___policy_width-{policy_width}___policy_depth-{policy_depth}___timestamp-{time_str}"
         runtime_name = runtime_name.replace(".", "_").replace(":", "_")
         runtime_dir_name = "./logs/" + runtime_name
         os.mkdir(runtime_dir_name)
@@ -106,17 +106,20 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
                 # env._current_episode.goals[0].position
                 # env._current_episode.start_rotation
          
-                action, log_prob_action = model(torch.tensor([env.get_metrics()['distance_to_goal'],
-                                                                observations['pointgoal_with_gps_compass'][0],
+               # action, log_prob_action = model(torch.tensor([env.get_metrics()['distance_to_goal'],
+               #                                                 observations['pointgoal_with_gps_compass'][0],
+               #                                                 observations['pointgoal_with_gps_compass'][1],
+               #                                                 past_distance_to_goal], device=DEVICE))
+                action, log_prob_action = model(torch.tensor([  observations['pointgoal_with_gps_compass'][0],
                                                                 observations['pointgoal_with_gps_compass'][1],
-                                                                past_distance_to_goal], device=DEVICE))
+                                                                observations['heading'][0],
+                                                                observations['compass'][0]  ], device=DEVICE))
                 log_prob_action_lst.append(log_prob_action)
                 past_distance_to_goal = env.get_metrics()['distance_to_goal']
                 observations = env.step(action_space[action.item()])
                 r = round((2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / (2*env._current_episode.info['geodesic_distance']), 3)
                 if r < 0: r = 0
                 episode_rewards.append(r)
-                import ipdb; ipdb.set_trace()
                 
                 if env.get_metrics()['distance_to_goal'] < 1:
                     env.step("STOP")
