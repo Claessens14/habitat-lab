@@ -20,13 +20,11 @@ GAMMA = 0.99
 SAVE_INTERVAL = 500
 DEVICE = 'cuda'
 
-def make_video_cv2(observations, prefix=""):
-    output_path = "./video_dir/"
-    os.makedirs(output_path, exist_ok=True)
+def make_video_cv2(observations, output_path):
     shp = observations[0].shape
     videodims = (shp[1], shp[0])
     fourcc = cv2.VideoWriter_fourcc("m", "p", "4", "v")
-    vid_name = output_path + prefix + ".mp4"
+    vid_name = output_path +  ".mp4"
     video = cv2.VideoWriter(vid_name, fourcc, 10, videodims)
     for ob in observations:
         bgr_im_1st_person = ob[..., 0:3][..., ::-1]
@@ -64,7 +62,7 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
 
         ct = datetime.datetime.now()
         time_str = str(ct.strftime("%c").replace(" ", "-"))
-        runtime_name = f"new-input___learning_rate-{learning_rate}___training_episodes-{training_episodes}___policy_width-{policy_width}___policy_depth-{policy_depth}___timestamp-{time_str}"
+        runtime_name = f"xp___learning_rate-{learning_rate}___training_episodes-{training_episodes}___policy_width-{policy_width}___policy_depth-{policy_depth}___timestamp-{time_str}"
         runtime_name = runtime_name.replace(".", "_").replace(":", "_")
         runtime_dir_name = "./logs/" + runtime_name
         os.mkdir(runtime_dir_name)
@@ -79,54 +77,45 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
         aim_sess.set_params(hparams, name="Hyper_Parameters")
         print("==================================")
         print("envronment setup complete")
-       
-
-        
         action_space = ["MOVE_FORWARD", "TURN_LEFT", "TURN_RIGHT"]
-        model = ReinforceModel(4, policy_width, len(action_space))
+        model = ReinforceModel(3, policy_width, len(action_space))
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         running_reward = 0
-        epoch_rewards_lst = []
+        episode_rewards_lst = []
         for episode in range(training_episodes):
-            #hereb
-            observations, log_prob_action_lst, episode_rewards = env.reset(), [], []
+            observations, log_prob_action_lst, step_rewards = env.reset(), [], []
             step_count = 0
             past_location = None
             past_distance_to_goal = env._current_episode.info['geodesic_distance']
             all_obs = []
             while not env.episode_over:
                 #print(step_count)
-                # print(past_distance_to_goal)
-                # print(env.get_metrics()['distance_to_goal'])
-         
-                #print("---")
-                # print(env.episode_over)
-                # env._current_episode.start_position
-                # env._current_episode.info['geodesic_distance']
-                # env._current_episode.goals[0].position
-                # env._current_episode.start_rotation
-         
-               # action, log_prob_action = model(torch.tensor([env.get_metrics()['distance_to_goal'],
-               #                                                 observations['pointgoal_with_gps_compass'][0],
-               #                                                 observations['pointgoal_with_gps_compass'][1],
-               #                                                 past_distance_to_goal], device=DEVICE))
                 action, log_prob_action = model(torch.tensor([  observations['pointgoal_with_gps_compass'][0],
                                                                 observations['pointgoal_with_gps_compass'][1],
-                                                                observations['heading'][0],
-                                                                observations['compass'][0]  ], device=DEVICE))
+                                                                observations['heading'][0]
+                                                               ], device=DEVICE))#observations['compass'][0]  
                 log_prob_action_lst.append(log_prob_action)
+                try:
+                    observations = env.step(action_space[action.item()])
+                except Exception as e:
+                    import ipdb; ipdb.set_trace()
+                    print(e)
+                #distance_diff = env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']
+                distance_diff = past_distance_to_goal - env.get_metrics()['distance_to_goal']
                 past_distance_to_goal = env.get_metrics()['distance_to_goal']
-                observations = env.step(action_space[action.item()])
-                r = round((2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / (2*env._current_episode.info['geodesic_distance']), 3)
-                if r < 0: r = 0
-                episode_rewards.append(r)
-                
-                if env.get_metrics()['distance_to_goal'] < 1:
+                distance_diff_relu = distance_diff if distance_diff > 0 else 0
+                distance_diff_relu_relative  = round(distance_diff_relu / env._current_episode.info['geodesic_distance'], 3)
+                #print(distance_diff_relu_relative) 
+               # r = round((2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / (2*env._current_episode.info['geodesic_distance']), 3) 
+                step_rewards.append(distance_diff_relu_relative)
+                if step_count > 5 and env.get_metrics()['distance_to_goal'] < 1:
+                    print(env.get_metrics()['distance_to_goal'])
                     env.step("STOP")
-                
+                    print("STOP")
                 if env.episode_over:
-                    aim.track(r, name="end_rewards") 
-                if episode % save_interval == 0:  # draw every 10 episodes
+                    print(step_rewards)
+                    aim.track(sum(step_rewards), name="end_rewards") 
+                if episode % save_interval == 0 and episode > 5:  # draw every 10 episodes
                     info = env.get_metrics()
                     use_ob = observations_to_image(observations, info)
                     use_ob = overlay_frame(use_ob, info)
@@ -137,28 +126,35 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
                         np_all_obs = np.array(all_obs)
                         np_all_obs = np.transpose(np_all_obs, (0, 2, 1, 3))
                         ct = datetime.datetime.now()
-                        time_str = str(ct.strftime("%c").replace(" ", "-"))
-                        fname = os.path.basename(__file__) + "-" + runtime_name + "-" + str(episode) + "-"  + time_str
-                        make_video_cv2(np_all_obs, fname)
-                        torch.save(epoch_rewards_lst, "./output/reward_data/" + "r=" + str(r) + "_"+ fname + ".pt")
-                        fname = "ckpt_r=" + str(r) + "_" + fname + ".pt"
-                        torch.save(model.state_dict(), "./ckpt/" + fname)
+                        time_str = str(ct.strftime("%c").replace(" ", "-").replace(".", "_").replace(":", "_"))
+                        r_avg = str(sum(episode_rewards_lst) / len(episode_rewards_lst)).replace(".", "_")
+                        #fname = os.path.basename(__file__) + "-" + runtime_name + "-" + str(episode) + "-"  + time_str
+                        fname =  "episode=" + str(episode) + "___r_avg=" + r_avg + "___"  + time_str
+                        fpath_video = f"{runtime_dir_name}/video_dir/"
+                        make_video_cv2(np_all_obs, fpath_video + "video___" + fname)
+                        fpath_rewards = f"{runtime_dir_name}/reward_lst/"
+                        os.makedirs(fpath_rewards, exist_ok=True)
+                        torch.save(episode_rewards_lst, fpath_rewards + "rewards_lst___" + fname + ".pt")
+                        fpath_ckpt = f"{runtime_dir_name}/ckpt/"
+                        os.makedirs(fpath_ckpt, exist_ok=True)
+                        torch.save(model.state_dict(), fpath_ckpt + "ckpt___" + fname)
                 step_count += 1
-            running_reward = 0.05*sum(episode_rewards) + 0.95*running_reward
+            #running_reward = 0.05*sum(step_rewards) + 0.95*running_reward
             #print(f"{episode} -> running_reward: {running_reward}")
-            print(f"{episode} -> reward: {episode_rewards[-1]} %")
-            epoch_rewards_lst.append(episode_rewards[-1])
+            print(f"{episode} -> reward: {sum(step_rewards)} %")
+            #print(f"{episode} -> coverage: {env._ccurent_ env._current_episode.info['geodesic_distance']} %")
+            episode_rewards_lst.append(sum(step_rewards))
             discounted_rewards = []
-            for t in range(len(episode_rewards)):
+            for t in range(len(episode_rewards_lst)):
                 Gt = 0
                 power = 0
-                for future_reward in episode_rewards[t:]:
+                for future_reward in episode_rewards_lst[t:]:
                     Gt = Gt + GAMMA**power * future_reward
                     power += 1
                 discounted_rewards.append(Gt)
             discounted_rewards = torch.tensor(discounted_rewards)
             # Normalize
-            discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / discounted_rewards.std()
+            #discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / discounted_rewards.std()
             # REINFORCE
             policy_loss_lst = []
             for log_prob, Gt in zip(log_prob_action_lst, discounted_rewards):
