@@ -16,7 +16,6 @@ Policy Based Navigation with REINFORCE optimization
 
 LEARNING_RATE = 0.0001
 TRAINING_EPISODES = 10000
-GAMMA = 0.99
 SAVE_INTERVAL = 500
 DEVICE = 'cuda'
 
@@ -53,7 +52,7 @@ class ReinforceModel(torch.nn.Module):
         return action, m.log_prob(action)
 
 
-def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, policy_depth=2, policy_width=16):    
+def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, policy_depth=2, policy_width=16, gamma=0.95):    
     with habitat.Env(
         config=habitat.get_config(
             "configs/tasks/pointnav.yaml"
@@ -62,7 +61,7 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
 
         ct = datetime.datetime.now()
         time_str = str(ct.strftime("%c").replace(" ", "-"))
-        runtime_name = f"xp___learning_rate-{learning_rate}___training_episodes-{training_episodes}___policy_width-{policy_width}___policy_depth-{policy_depth}___timestamp-{time_str}"
+        runtime_name = f"xp-new_reward___learning_rate-{learning_rate}___training_episodes-{training_episodes}___policy_width-{policy_width}___policy_depth-{policy_depth}___timestamp-{time_str}"
         runtime_name = runtime_name.replace(".", "_").replace(":", "_")
         runtime_dir_name = "./logs/" + runtime_name
         os.mkdir(runtime_dir_name)
@@ -113,7 +112,7 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
                     env.step("STOP")
                     print("STOP")
                 if env.episode_over:
-                    print(step_rewards)
+                    #print(step_rewards)
                     aim.track(sum(step_rewards), name="end_rewards") 
                 if episode % save_interval == 0 and episode > 5:  # draw every 10 episodes
                     info = env.get_metrics()
@@ -141,15 +140,15 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
                 step_count += 1
             #running_reward = 0.05*sum(step_rewards) + 0.95*running_reward
             #print(f"{episode} -> running_reward: {running_reward}")
-            print(f"{episode} -> reward: {sum(step_rewards)} %")
+            print(f"{episode} -> reward: {sum(step_rewards)} ")
             #print(f"{episode} -> coverage: {env._ccurent_ env._current_episode.info['geodesic_distance']} %")
             episode_rewards_lst.append(sum(step_rewards))
             discounted_rewards = []
-            for t in range(len(episode_rewards_lst)):
+            for t in range(len(step_rewards)):
                 Gt = 0
                 power = 0
-                for future_reward in episode_rewards_lst[t:]:
-                    Gt = Gt + GAMMA**power * future_reward
+                for future_reward in step_rewards[t:]:
+                    Gt = Gt + gamma**power * future_reward
                     power += 1
                 discounted_rewards.append(Gt)
             discounted_rewards = torch.tensor(discounted_rewards)
