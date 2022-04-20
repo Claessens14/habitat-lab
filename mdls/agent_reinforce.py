@@ -1,6 +1,7 @@
 import habitat
 import habitat_sim
 
+import time
 import aim
 import datetime
 import torch
@@ -42,8 +43,8 @@ class ReinforceModel(torch.nn.Module):
     
     def forward(self, state_values): 
         '''
-        state_values: torch tensor (distance_to_goal, observations[pointgoal_with_gps_compas], difference_last_location) 
-        returns: 0-3 for indexing [FORWARD, RIGHT, LEFT ]
+        state_values: torch tensor 
+        returns: 0-2 for indexing [FORWARD, RIGHT, LEFT]
         '''
         h = torch.nn.functional.relu(self.layer1(state_values)).to(device=DEVICE)
         action_probs = torch.nn.functional.softmax(self.layer2(h))
@@ -61,7 +62,7 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
 
         ct = datetime.datetime.now()
         time_str = str(ct.strftime("%c").replace(" ", "-"))
-        runtime_name = f"xp-new_reward___learning_rate-{learning_rate}___training_episodes-{training_episodes}___policy_width-{policy_width}___policy_depth-{policy_depth}___timestamp-{time_str}"
+        runtime_name = f"xp-new_r_and_gamma_srch___learning_rate-{learning_rate}___training_episodes-{training_episodes}___policy_width-{policy_width}___policy_depth-{policy_depth}___timestamp-{time_str}"
         runtime_name = runtime_name.replace(".", "_").replace(":", "_")
         runtime_dir_name = "./logs/" + runtime_name
         os.mkdir(runtime_dir_name)
@@ -69,7 +70,8 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
             "learning_rate": learning_rate,
             "training_episodes":training_episodes,
             "policy_width": policy_width,
-            "policy_depth": policy_depth
+            "policy_depth": policy_depth,
+            "id": int(time.time())
             #"batch_size": 32,
         }
         aim_sess = aim.Session(experiment=runtime_name)
@@ -107,13 +109,13 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
                 #print(distance_diff_relu_relative) 
                # r = round((2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / (2*env._current_episode.info['geodesic_distance']), 3) 
                 step_rewards.append(distance_diff_relu_relative)
-                if step_count > 5 and env.get_metrics()['distance_to_goal'] < 1:
+                if step_count > 5 and env.get_metrics()['distance_to_goal'] < 1 and not env.episode_over:
                     print(env.get_metrics()['distance_to_goal'])
                     env.step("STOP")
                     print("STOP")
                 if env.episode_over:
                     #print(step_rewards)
-                    aim.track(sum(step_rewards), name="end_rewards") 
+                    aim_sess.track(sum(step_rewards), name="end_rewards") 
                 if episode % save_interval == 0 and episode > 5:  # draw every 10 episodes
                     info = env.get_metrics()
                     use_ob = observations_to_image(observations, info)
