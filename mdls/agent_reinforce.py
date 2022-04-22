@@ -53,7 +53,7 @@ class ReinforceModel(torch.nn.Module):
         return action, m.log_prob(action)
 
 
-def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, policy_depth=2, policy_width=16, gamma=0.95):    
+def model_runner(script_id, learning_rate=0.01, save_interval=100, training_episodes=1000, policy_depth=2, policy_width=16, gamma=0.95):    
     with habitat.Env(
         config=habitat.get_config(
             "configs/tasks/pointnav.yaml"
@@ -67,6 +67,7 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
         runtime_dir_name = "./logs/" + runtime_name
         os.mkdir(runtime_dir_name)
         hparams = {
+            "script_id": script_id,
             "learning_rate": learning_rate,
             "training_episodes":training_episodes,
             "policy_width": policy_width,
@@ -83,6 +84,7 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         running_reward = 0
         episode_rewards_lst = []
+        avg_coverage_lst = []
         for episode in range(training_episodes):
             observations, log_prob_action_lst, step_rewards = env.reset(), [], []
             step_count = 0
@@ -116,6 +118,10 @@ def model_runner(learning_rate=0.01, save_interval=100, training_episodes=1000, 
                 if env.episode_over:
                     #print(step_rewards)
                     aim_sess.track(sum(step_rewards), name="end_rewards") 
+                    # coverage
+                    coverage = env._current_episode.info['geodesic_distance'] -  env.get_metrics()['distance_to_goal'] 
+                    coverage = coverage / env._current_episode.info['geodesic_distance']
+                    aim_sess.track(coverage, name="coverage")
                 if episode % save_interval == 0 and episode > 5:  # draw every 10 episodes
                     info = env.get_metrics()
                     use_ob = observations_to_image(observations, info)
