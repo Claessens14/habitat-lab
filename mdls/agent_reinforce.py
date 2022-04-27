@@ -30,7 +30,7 @@ def make_video_cv2(observations, output_path):
         bgr_im_1st_person = ob[..., 0:3][..., ::-1]
         video.write(bgr_im_1st_person)
     video.release()
-    print("Saved to", vid_name)
+    #print("Saved to", vid_name)
 
 class ReinforceModel(torch.nn.Module):
     def __init__(self, num_input, policy_width, num_action):
@@ -39,6 +39,7 @@ class ReinforceModel(torch.nn.Module):
         self.num_action = num_action
         
         self.layer1 = torch.nn.Linear(num_input, policy_width).to(device=DEVICE)
+       # self.layer1_5 = torch.nn.Linear(policy_width, policy_width).to(device=DEVICE)
         self.layer2 = torch.nn.Linear(policy_width, num_action).to(device=DEVICE)
     
     def forward(self, state_values): 
@@ -47,13 +48,14 @@ class ReinforceModel(torch.nn.Module):
         returns: 0-2 for indexing [FORWARD, RIGHT, LEFT]
         '''
         h = torch.nn.functional.relu(self.layer1(state_values)).to(device=DEVICE)
+        #h = torch.nn.functional.relu(self.layer1_5(h)).to(device=DEVICE) # extra layer
         action_probs = torch.nn.functional.softmax(self.layer2(h))
         m = torch.distributions.Categorical(action_probs)
         action = m.sample()
         return action, m.log_prob(action)
 
 
-def model_runner(script_id, learning_rate=0.01, save_interval=100, training_episodes=1000, policy_depth=2, policy_width=16, gamma=0.95):    
+def model_runner(script_id, description, learning_rate=0.01, save_interval=100, training_episodes=1000, policy_depth=2, policy_width=16, gamma=0.95):    
     with habitat.Env(
         config=habitat.get_config(
             "configs/tasks/pointnav.yaml"
@@ -62,12 +64,13 @@ def model_runner(script_id, learning_rate=0.01, save_interval=100, training_epis
 
         ct = datetime.datetime.now()
         time_str = str(ct.strftime("%c").replace(" ", "-"))
-        runtime_name = f"xp-new_r_and_gamma_srch___learning_rate-{learning_rate}___training_episodes-{training_episodes}___policy_width-{policy_width}___policy_depth-{policy_depth}___timestamp-{time_str}"
+        runtime_name = f"script_id-{script_id}___learning_rate-{learning_rate}___training_episodes-{training_episodes}___policy_width-{policy_width}___policy_depth-{policy_depth}___timestamp-{time_str}"
         runtime_name = runtime_name.replace(".", "_").replace(":", "_")
         runtime_dir_name = "./logs/" + runtime_name
         os.mkdir(runtime_dir_name)
         hparams = {
             "script_id": script_id,
+            "description": description,
             "learning_rate": learning_rate,
             "training_episodes":training_episodes,
             "policy_width": policy_width,
@@ -77,8 +80,8 @@ def model_runner(script_id, learning_rate=0.01, save_interval=100, training_epis
         }
         aim_sess = aim.Session(experiment=runtime_name)
         aim_sess.set_params(hparams, name="Hyper_Parameters")
-        print("==================================")
-        print("envronment setup complete")
+       # print("==================================")
+       # print("envronment setup complete")
         action_space = ["MOVE_FORWARD", "TURN_LEFT", "TURN_RIGHT"]
         model = ReinforceModel(3, policy_width, len(action_space))
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -112,16 +115,16 @@ def model_runner(script_id, learning_rate=0.01, save_interval=100, training_epis
                # r = round((2 * env._current_episode.info['geodesic_distance'] - env.get_metrics()['distance_to_goal']) / (2*env._current_episode.info['geodesic_distance']), 3) 
                 step_rewards.append(distance_diff_relu_relative)
                 if step_count > 5 and env.get_metrics()['distance_to_goal'] < 1 and not env.episode_over:
-                    print(env.get_metrics()['distance_to_goal'])
+                    #print(env.get_metrics()['distance_to_goal'])
                     env.step("STOP")
-                    print("STOP")
+                   # print("STOP")
                 if env.episode_over:
-                    #print(step_rewards)
                     aim_sess.track(sum(step_rewards), name="end_rewards") 
                     # coverage
                     coverage = env._current_episode.info['geodesic_distance'] -  env.get_metrics()['distance_to_goal'] 
                     coverage = coverage / env._current_episode.info['geodesic_distance']
                     aim_sess.track(coverage, name="coverage")
+                    print(str(episode) + " --> coverage: " + str(round(coverage, 3)))
                 if episode % save_interval == 0 and episode > 5:  # draw every 10 episodes
                     info = env.get_metrics()
                     use_ob = observations_to_image(observations, info)
@@ -148,7 +151,7 @@ def model_runner(script_id, learning_rate=0.01, save_interval=100, training_epis
                 step_count += 1
             #running_reward = 0.05*sum(step_rewards) + 0.95*running_reward
             #print(f"{episode} -> running_reward: {running_reward}")
-            print(f"{episode} -> reward: {sum(step_rewards)} ")
+           # print(f"{episode} -> reward: {sum(step_rewards)} ")
             #print(f"{episode} -> coverage: {env._ccurent_ env._current_episode.info['geodesic_distance']} %")
             episode_rewards_lst.append(sum(step_rewards))
             discounted_rewards = []
@@ -171,7 +174,7 @@ def model_runner(script_id, learning_rate=0.01, save_interval=100, training_epis
             policy_loss_sum.backward()
             optimizer.step()
         
-        print("==================================")
+       # print("==================================")
 
 if __name__ == "__main__":
     model_runner()
