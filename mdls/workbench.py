@@ -20,9 +20,6 @@ This is a work bench script. Meant to be copied, and have models put into place.
     - descriptive naming for aim tracking, video loggin, and state_dict (ids, time, params etc) 
 '''
 
-LEARNING_RATE = 0.0001
-TRAINING_EPISODES = 10000
-SAVE_INTERVAL = 500
 DEVICE = 'cuda'
 
 def make_video_cv2(observations, output_path):
@@ -35,29 +32,6 @@ def make_video_cv2(observations, output_path):
         bgr_im_1st_person = ob[..., 0:3][..., ::-1]
         video.write(bgr_im_1st_person)
     video.release()
-    #print("Saved to", vid_name)
-
-class ReinforceModel(torch.nn.Module):
-    def __init__(self, num_input, policy_width, num_action):
-        super(ReinforceModel, self).__init__()
-        self.num_input = num_input
-        self.num_action = num_action
-        
-        self.layer1 = torch.nn.Linear(num_input, policy_width).to(device=DEVICE)
-       # self.layer1_5 = torch.nn.Linear(policy_width, policy_width).to(device=DEVICE)
-        self.layer2 = torch.nn.Linear(policy_width, num_action).to(device=DEVICE)
-    
-    def forward(self, state_values): 
-        '''
-        state_values: torch tensor 
-        returns: 0-2 for indexing [FORWARD, RIGHT, LEFT]
-        '''
-        h = torch.nn.functional.relu(self.layer1(state_values)).to(device=DEVICE)
-        #h = torch.nn.functional.relu(self.layer1_5(h)).to(device=DEVICE) # extra layer
-        action_probs = torch.nn.functional.softmax(self.layer2(h))
-        m = torch.distributions.Categorical(action_probs)
-        action = m.sample()
-        return action, m.log_prob(action)
 
 
 def model_runner(script_id, description, learning_rate=0.01, save_interval=100, training_episodes=1000, policy_depth=2, policy_width=16, gamma=0.95):    
@@ -81,11 +55,11 @@ def model_runner(script_id, description, learning_rate=0.01, save_interval=100, 
             "policy_width": policy_width,
             "policy_depth": policy_depth,
             "id": int(time.time())
-            #"batch_size": 32,
+            # TODO -- "batch_size": 32,
         }
         aim_sess = aim.Session(experiment=runtime_name)
         aim_sess.set_params(hparams, name="Hyper_Parameters")
-        # - environ setup complete - 
+        # environ setup complete
         
         action_space = ["MOVE_FORWARD", "TURN_LEFT", "TURN_RIGHT"]
         running_reward = 0
@@ -157,32 +131,16 @@ def model_runner(script_id, description, learning_rate=0.01, save_interval=100, 
                         os.makedirs(fpath_ckpt, exist_ok=True)
                         torch.save(model.state_dict(), fpath_ckpt + "ckpt___" + fname)
                 step_count += 1
-            #running_reward = 0.05*sum(step_rewards) + 0.95*running_reward
-            #print(f"{episode} -> running_reward: {running_reward}")
-           # print(f"{episode} -> reward: {sum(step_rewards)} ")
+            
+            #print(f"{episode} -> reward: {sum(step_rewards)} ")
             #print(f"{episode} -> coverage: {env._ccurent_ env._current_episode.info['geodesic_distance']} %")
-            episode_rewards_lst.append(sum(step_rewards))
-            discounted_rewards = []
-            for t in range(len(step_rewards)):
-                Gt = 0
-                power = 0
-                for future_reward in step_rewards[t:]:
-                    Gt = Gt + gamma**power * future_reward
-                    power += 1
-                discounted_rewards.append(Gt)
-            discounted_rewards = torch.tensor(discounted_rewards)
-            # Normalize
-            #discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / discounted_rewards.std()
-            # REINFORCE
-            policy_loss_lst = []
-            for log_prob, Gt in zip(log_prob_action_lst, discounted_rewards):
-                policy_loss_lst.append(-log_prob * Gt)
-            optimizer.zero_grad()
-            policy_loss_sum = torch.stack(policy_loss_lst).sum()
-            policy_loss_sum.backward()
-            optimizer.step()
-        
-       # print("==================================")
+            
+
+        # reward declaring
+
+        # Optimziing Policy
+
+
 
 if __name__ == "__main__":
     model_runner()
